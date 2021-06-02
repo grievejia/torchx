@@ -83,43 +83,43 @@ class RunnerTest(unittest.TestCase):
 
     def test_run(self, _) -> None:
         test_file = os.path.join(self.test_dir, "test_file")
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME,
             schedulers={"default": self.scheduler},
             wait_interval=1,
         )
-        self.assertEqual(1, len(session.scheduler_backends()))
+        self.assertEqual(1, len(runner.scheduler_backends()))
 
         role = Role(name="touch").runs("touch.sh", test_file).on(self.test_container)
         app = Application("name").of(role)
 
-        app_handle = session.run(app, cfg=self.cfg)
-        app_status = none_throws(session.wait(app_handle))
+        app_handle = runner.run(app, cfg=self.cfg)
+        app_status = none_throws(runner.wait(app_handle))
         self.assertEqual(AppState.SUCCEEDED, app_status.state)
 
     def test_dryrun(self, _) -> None:
         scheduler_mock = MagicMock()
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": scheduler_mock}, wait_interval=1
         )
         role = Role(name="touch").runs("echo", "hello world").on(self.test_container)
         app = Application("name").of(role)
-        session.dryrun(app, "default", cfg=self.cfg)
+        runner.dryrun(app, "default", cfg=self.cfg)
         scheduler_mock.submit_dryrun.assert_called_once_with(app, self.cfg)
         scheduler_mock._validate.assert_called_once()
 
     def test_describe(self, _) -> None:
-        session = Runner(name=SESSION_NAME, schedulers={"default": self.scheduler})
+        runner = Runner(name=SESSION_NAME, schedulers={"default": self.scheduler})
         role = Role(name="sleep").runs("sleep.sh", "60").on(self.test_container)
         app = Application("sleeper").of(role)
 
-        app_handle = session.run(app, cfg=self.cfg)
-        self.assertEqual(app, session.describe(app_handle))
+        app_handle = runner.run(app, cfg=self.cfg)
+        self.assertEqual(app, runner.describe(app_handle))
         # unknown app should return None
-        self.assertIsNone(session.describe("default://session1/unknown_app"))
+        self.assertIsNone(runner.describe("default://session1/unknown_app"))
 
     def test_list(self, _) -> None:
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": self.scheduler}, wait_interval=1
         )
         role = Role(name="touch").runs("sleep.sh", "1").on(self.test_container)
@@ -131,9 +131,9 @@ class RunnerTest(unittest.TestCase):
             # since this test validates the list() API,
             # we do not wait for the apps to finish so run the apps
             # in managed mode so that the local scheduler reaps the apps on exit
-            session.run(app)
+            runner.run(app)
 
-        apps = session.list()
+        apps = runner.list()
         self.assertEqual(num_apps, len(apps))
 
     def test_evict_non_existent_app(self, _) -> None:
@@ -142,7 +142,7 @@ class RunnerTest(unittest.TestCase):
         # called on the app
 
         scheduler = LocalScheduler(session_name=SESSION_NAME, cache_size=1)
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": scheduler}, wait_interval=1
         )
         test_file = os.path.join(self.test_dir, "test_file")
@@ -152,29 +152,29 @@ class RunnerTest(unittest.TestCase):
         # local scheduler was setup with a cache size of 1
         # run the same app twice (the first will be removed from the scheduler's cache)
         # then validate that the first one will drop from the session's app cache as well
-        app_id1 = session.run(app, cfg=self.cfg)
-        session.wait(app_id1)
+        app_id1 = runner.run(app, cfg=self.cfg)
+        runner.wait(app_id1)
 
-        app_id2 = session.run(app, cfg=self.cfg)
-        session.wait(app_id2)
+        app_id2 = runner.run(app, cfg=self.cfg)
+        runner.wait(app_id2)
 
-        apps = session.list()
+        apps = runner.list()
 
         self.assertEqual(1, len(apps))
         self.assertFalse(app_id1 in apps)
         self.assertTrue(app_id2 in apps)
 
     def test_status(self, _) -> None:
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": self.scheduler}, wait_interval=1
         )
         role = Role(name="sleep").runs("sleep.sh", "60").on(self.test_container)
         app = Application("sleeper").of(role)
-        app_handle = session.run(app, cfg=self.cfg)
-        app_status = none_throws(session.status(app_handle))
+        app_handle = runner.run(app, cfg=self.cfg)
+        app_status = none_throws(runner.status(app_handle))
         self.assertEqual(AppState.RUNNING, app_status.state)
-        session.stop(app_handle)
-        app_status = none_throws(session.status(app_handle))
+        runner.stop(app_handle)
+        app_status = none_throws(runner.status(app_handle))
         self.assertEqual(AppState.CANCELLED, app_status.state)
 
     def test_status_unknown_app(self, _) -> None:
@@ -193,12 +193,12 @@ class RunnerTest(unittest.TestCase):
         mock_scheduler.submit.return_value = app_id
         mock_scheduler.describe.return_value = resp
 
-        session = Runner(
+        runner = Runner(
             name="test_ui_url_session", schedulers={"default": mock_scheduler}
         )
         role = Role("ignored").runs("/bin/echo").on(self.test_container)
-        app_handle = session.run(Application(app_id).of(role))
-        status = none_throws(session.status(app_handle))
+        app_handle = runner.run(Application(app_id).of(role))
+        status = none_throws(runner.status(app_handle))
         self.assertEquals(resp.ui_url, status.ui_url)
 
     @patch("json.dumps")
@@ -211,20 +211,20 @@ class RunnerTest(unittest.TestCase):
         mock_scheduler.submit.return_value = app_id
         mock_scheduler.describe.return_value = resp
 
-        session = Runner(
+        runner = Runner(
             name="test_structured_msg", schedulers={"default": mock_scheduler}
         )
         role = Role("ignored").runs("/bin/echo").on(self.test_container)
-        app_handle = session.run(Application(app_id).of(role))
-        status = none_throws(session.status(app_handle))
+        app_handle = runner.run(Application(app_id).of(role))
+        status = none_throws(runner.status(app_handle))
         self.assertEquals(resp.structured_error_msg, status.structured_error_msg)
 
     def test_wait_unknown_app(self, _) -> None:
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": self.scheduler}, wait_interval=1
         )
-        self.assertIsNone(session.wait("default://test_session/unknown_app_id"))
-        self.assertIsNone(session.wait("default://another_session/some_app"))
+        self.assertIsNone(runner.wait("default://test_session/unknown_app_id"))
+        self.assertIsNone(runner.wait("default://another_session/some_app"))
 
     def test_stop(self, _) -> None:
         session = Runner(
@@ -233,11 +233,11 @@ class RunnerTest(unittest.TestCase):
         self.assertIsNone(session.stop("default://test_session/unknown_app_id"))
 
     def test_log_lines_unknown_app(self, _) -> None:
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": self.scheduler}, wait_interval=1
         )
         with self.assertRaises(UnknownAppException):
-            session.log_lines("default://test_session/unknown", "trainer")
+            runner.log_lines("default://test_session/unknown", "trainer")
 
     def test_log_lines(self, _) -> None:
         app_id = "mock_app"
@@ -247,7 +247,7 @@ class RunnerTest(unittest.TestCase):
             app_id, AppState.RUNNING
         )
         scheduler_mock.log_iter.return_value = iter(["hello", "world"])
-        session = Runner(
+        runner = Runner(
             name=SESSION_NAME, schedulers={"default": scheduler_mock}, wait_interval=1
         )
 
@@ -257,7 +257,7 @@ class RunnerTest(unittest.TestCase):
         since = datetime.datetime.now()
         until = datetime.datetime.now()
         lines = list(
-            session.log_lines(
+            runner.log_lines(
                 f"default://test_session/{app_id}",
                 role_name,
                 replica_id,
@@ -282,10 +282,10 @@ class RunnerTest(unittest.TestCase):
         json_dumps_mock.return_value = "{}"
         local_sched_mock = MagicMock()
         schedulers = {"default": default_sched_mock, "local": local_sched_mock}
-        session = Runner(name="test_session", schedulers=schedulers)
+        runner = Runner(name="test_session", schedulers=schedulers)
 
         role = Role(name="sleep").runs("sleep.sh", "60").on(self.test_container)
         app = Application("sleeper").of(role)
         cfg = RunConfig()
-        session.run(app, scheduler="local", cfg=cfg)
+        runner.run(app, scheduler="local", cfg=cfg)
         local_sched_mock.submit.called_once_with(app, cfg)
