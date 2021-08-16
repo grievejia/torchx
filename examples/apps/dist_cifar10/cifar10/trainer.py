@@ -141,4 +141,4 @@ if __name__ == "__main__":
     model = LitResnet(lr=0.05)
     model.datamodule = cifar10_dm
 
-    Trainer(gpus=args.ngpus, accelerator="ddp2").fit(model, cifar10_dm)
+    Trainer(gpus=args.ngpus, accelerator="ddp").fit(model, cifar10_dm)
