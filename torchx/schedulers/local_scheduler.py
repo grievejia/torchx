@@ -482,7 +482,7 @@ class LocalScheduler(Scheduler):
             env=env,
             stdout=stdout_,
             stderr=stderr_,
-            preexec_fn=_pr_set_pdeathsig,
+            # preexec_fn=_pr_set_pdeathsig,
         )
         return _LocalReplica(
             role_name,
@@ -566,7 +566,8 @@ class LocalScheduler(Scheduler):
             replica_log_dirs = role_log_dirs.setdefault(role.name, [])
 
             img_root = image_provider.fetch(role.image)
-            cmd = os.path.join(img_root, role.entrypoint)
+            # cmd = os.path.join(img_root, role.entrypoint)
+            cmd = role.entrypoint
 
             for replica_id in range(role.num_replicas):
                 values = macros.Values(

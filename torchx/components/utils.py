@@ -12,12 +12,13 @@ meaningful stages in a workflow.
 """
 
 import shlex
+from typing import List
 
 import torchx.specs as specs
 
 
 def echo(
-    msg: str = "hello world", image: str = "/tmp", num_replicas: int = 1
+        msg: str = "hello world", image: str = "/tmp", num_replicas: int = 1
 ) -> specs.AppDef:
     """
     Echos a message to stdout (calls /bin/echo)
@@ -64,6 +65,22 @@ def touch(file: str) -> specs.AppDef:
     )
 
 
+def _quote(s: str) -> str:
+    """
+    A version of shlex.quote that allows for variable substitutions. This is not
+    injection safe.
+    """
+    return '"' + s.replace('"', '"\'"\'"') + '"'
+
+
+def _join(cmd: List[str]) -> str:
+    """
+    A version of shlex.join that allows for variable substitutions. This is not
+    injection safe.
+    """
+    return ' '.join(_quote(arg) for arg in cmd)
+
+
 def sh(*args: str, image: str = "/tmp", num_replicas: int = 1) -> specs.AppDef:
     """
     Runs the provided command via sh. Currently sh does not support
@@ -76,7 +93,7 @@ def sh(*args: str, image: str = "/tmp", num_replicas: int = 1) -> specs.AppDef:
 
     """
 
-    escaped_args = " ".join(shlex.quote(arg) for arg in args)
+    escaped_args = " ".join(list(args))
 
     return specs.AppDef(
         name="sh",
@@ -87,6 +104,8 @@ def sh(*args: str, image: str = "/tmp", num_replicas: int = 1) -> specs.AppDef:
                 entrypoint="/bin/sh",
                 args=["-c", escaped_args],
                 num_replicas=num_replicas,
+                resource=specs.Resource(gpu=1, cpu=2, memMB=1024 * 10),
+                port_map={"rdzv": 30001},
             )
         ],
     )

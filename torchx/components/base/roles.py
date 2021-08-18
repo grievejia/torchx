@@ -12,18 +12,18 @@ from torchx.specs.api import NULL_RESOURCE, Resource, RetryPolicy, Role, macros
 
 
 def create_torch_dist_role(
-    name: str,
-    image: str,
-    entrypoint: str,
-    resource: Resource = NULL_RESOURCE,
-    base_image: Optional[str] = None,
-    args: Optional[List[str]] = None,
-    env: Optional[Dict[str, str]] = None,
-    num_replicas: int = 1,
-    max_retries: int = 0,
-    port_map: Dict[str, int] = field(default_factory=dict),
-    retry_policy: RetryPolicy = RetryPolicy.APPLICATION,
-    **launch_kwargs: Any,
+        name: str,
+        image: str,
+        entrypoint: str,
+        resource: Resource = NULL_RESOURCE,
+        base_image: Optional[str] = None,
+        args: Optional[List[str]] = None,
+        env: Optional[Dict[str, str]] = None,
+        num_replicas: int = 1,
+        max_retries: int = 0,
+        port_map: Dict[str, int] = field(default_factory=dict),
+        retry_policy: RetryPolicy = RetryPolicy.APPLICATION,
+        **launch_kwargs: Any,
 ) -> Role:
     """
     A ``Role`` for which the user provided ``entrypoint`` is executed with the
@@ -88,9 +88,9 @@ def create_torch_dist_role(
     env = env or {}
 
     entrypoint_override = "python"
-    torch_run_args: List[str] = ["-m", "torch.distributed.launch"]
+    torch_run_args: List[str] = ["-m", "torch.distributed.run"]
 
-    launch_kwargs.setdefault("rdzv_backend", "etcd")
+    launch_kwargs.setdefault("rdzv_backend", "c10d")
     launch_kwargs.setdefault("rdzv_id", macros.app_id)
     launch_kwargs.setdefault("role", name)
 
@@ -101,9 +101,9 @@ def create_torch_dist_role(
                 torch_run_args += [f"--{arg}"]
         else:
             torch_run_args += [f"--{arg}", str(val)]
-    if not os.path.isabs(entrypoint) and not entrypoint.startswith(macros.img_root):
+    # if not os.path.isabs(entrypoint) and not entrypoint.startswith(macros.img_root):
         # make entrypoint relative to {img_root} ONLY if it is not an absolute path
-        entrypoint = os.path.join(macros.img_root, entrypoint)
+        # entrypoint = os.path.join(macros.img_root, entrypoint)
 
     args = [*torch_run_args, entrypoint, *args]
     return Role(

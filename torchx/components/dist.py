@@ -18,16 +18,17 @@ from torchx.components.base import torch_dist_role
 
 
 def ddp(
-    image: str,
-    entrypoint: str,
-    resource: Optional[str] = None,
-    nnodes: int = 1,
-    nproc_per_node: int = 1,
-    base_image: Optional[str] = None,
-    name: str = "test_name",
-    role: str = "worker",
-    env: Optional[Dict[str, str]] = None,
-    *script_args: str,
+        image: str,
+        entrypoint: str,
+        resource: Optional[str] = None,
+        nnodes: int = 1,
+        nproc_per_node: int = 1,
+        base_image: Optional[str] = None,
+        name: str = "testapp",
+        role: str = "worker",
+        env: Optional[Dict[str, str]] = None,
+        launch_kwargs: Optional[Dict[str, str]] = None,
+        *script_args: str,
 ) -> specs.AppDef:
     """
     Distributed data parallel style application (one role, multi-replica).
@@ -44,11 +45,14 @@ def ddp(
         role: Name of the ddp role.
         script: Main script.
         env: Env variables.
+        launch_kwargs: Launch kwargs.
         script_args: Script arguments.
 
     Returns:
         specs.AppDef: Torchx AppDef
     """
+
+    # resource = specs.Resource(gpu=1, memMB=16 * 1024, cpu=4)
 
     ddp_role = torch_dist_role(
         name=role,
@@ -62,6 +66,7 @@ def ddp(
         nproc_per_node=nproc_per_node,
         nnodes=nnodes,
         max_restarts=0,
+        **launch_kwargs or [],
     )
 
     return specs.AppDef(name, roles=[ddp_role])
