@@ -67,6 +67,20 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="path to place the tensorboard logs",
         default="/tmp",
     )
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        default=0,
+        help="Number of gpus to use",
+        required=False,
+    )
+    parser.add_argument(
+        "--nnodes",
+        type=int,
+        default=1,
+        help="Number of nodes to use",
+        required=False,
+    )
 
     return parser.parse_args(argv)
 
@@ -113,6 +127,9 @@ def main(argv: List[str]) -> None:
 
         # Initialize a trainer
         trainer = pl.Trainer(
+            accelerator="ddp",
+            gpus=args.gpus,
+            num_nodes=args.nnodes,
             logger=logger,
             max_epochs=args.epochs,
             callbacks=[checkpoint_callback],

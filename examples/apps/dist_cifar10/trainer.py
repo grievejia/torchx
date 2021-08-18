@@ -3,13 +3,12 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
 from pl_bolts.datamodules import CIFAR10DataModule
+import torchvision
 from pl_bolts.transforms.dataset_normalizations import cifar10_normalization
 from pytorch_lightning import LightningModule, seed_everything, Trainer
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-from torch.optim.lr_scheduler import OneCycleLR
 from typing import Optional, Dict, List
 from torch.optim.swa_utils import AveragedModel, update_bn
 from torchmetrics.functional import accuracy
@@ -17,7 +16,7 @@ import argparse
 
 PATH = "/home/ubuntu/data"
 
-BATCH_SIZE = 64
+NUM_WORKERS = os.cpu_count() // 2
 
 
 def create_model():
@@ -27,7 +26,7 @@ def create_model():
     return model
 
 
-def create_data_module():
+def create_data_module(batch_size: int, data_dir: str):
     train_transforms = torchvision.transforms.Compose([
         torchvision.transforms.RandomCrop(32, padding=4),
         torchvision.transforms.RandomHorizontalFlip(),
@@ -41,9 +40,9 @@ def create_data_module():
     ])
 
     return CIFAR10DataModule(
-        data_dir=PATH,
-        batch_size=BATCH_SIZE,
-        #     num_workers=NUM_WORKERS,
+        data_dir=data_dir,
+        batch_size=batch_size,
+        num_workers=NUM_WORKERS,
         train_transforms=train_transforms,
         test_transforms=test_transforms,
         val_transforms=test_transforms,
@@ -92,17 +91,7 @@ class LitResnet(LightningModule):
             momentum=0.9,
             weight_decay=5e-4,
         )
-        steps_per_epoch = 45000 // BATCH_SIZE
-        scheduler_dict = {
-            'scheduler': OneCycleLR(
-                optimizer,
-                0.1,
-                epochs=self.trainer.max_epochs,
-                steps_per_epoch=steps_per_epoch,
-            ),
-            'interval': 'step',
-        }
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler_dict}
+        return optimizer
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
@@ -113,15 +102,13 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "--epochs", type=int, default=3, help="number of epochs to train"
     )
     parser.add_argument(
-        "--ngpus", type=int, default=0, help="num gpus"
-    )
-    parser.add_argument(
         "--batch_size", type=int, default=32, help="batch size to use for training"
     )
     parser.add_argument(
         "--data_dir",
         type=str,
         help="data dir",
+        default="/tmp/cifar10",
     )
     parser.add_argument(
         "--log_path",
@@ -129,16 +116,19 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="path to place the tensorboard logs",
         default="/tmp",
     )
-
+    parser.add_argument("--use_gpu", action="store_true")
     return parser.parse_args(argv)
 
 
 if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
-    PATH = args.data_dir
-    cifar10_dm = create_data_module()
-
+    if args.use_gpu:
+        gpus = int(os.environ["LOCAL_WORLD_SIZE"])
+    else:
+        gpus = 0
+    batch_size = args.batch_size
+    num_nodes = int(os.environ["GROUP_WORLD_SIZE"])
+    cifar10_dm = create_data_module(batch_size, args.data_dir)
     model = LitResnet(lr=0.05)
-    model.datamodule = cifar10_dm
 
-    Trainer(gpus=args.ngpus, accelerator="ddp").fit(model, cifar10_dm)
+    Trainer(num_nodes=num_nodes, gpus=gpus, accelerator="ddp", max_epochs=args.epochs).fit(model, cifar10_dm)
