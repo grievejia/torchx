@@ -19,10 +19,12 @@ PATH = "/home/ubuntu/data"
 NUM_WORKERS = os.cpu_count() // 2
 
 
-def create_model():
-    model = torchvision.models.resnet18(pretrained=False, num_classes=10)
-    model.conv1 = nn.Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-    model.maxpool = nn.Identity()
+def create_model(num_classes: int = 10):
+    model = torchvision.models.resnet18(pretrained=True)
+    for param in model.parameters():
+        param.requires_grad = False
+    nfeatures = model.fc.in_features
+    model.fc = nn.Linear(nfeatures, num_classes)
     return model
 
 
@@ -99,7 +101,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         description="pytorch lightning + classy vision TorchX example app"
     )
     parser.add_argument(
-        "--epochs", type=int, default=3, help="number of epochs to train"
+        "--epochs", type=int, default=1, help="number of epochs to train"
     )
     parser.add_argument(
         "--batch_size", type=int, default=32, help="batch size to use for training"
