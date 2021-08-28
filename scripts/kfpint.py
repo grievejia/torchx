@@ -22,7 +22,6 @@ name torchserve on the default namespace.
 Environment variables:
 
 ```
-export KFP_HOST=<kfp HTTP URL without any path>
 export KFP_USERNAME=<kfp username>
 export KFP_PASSWORD=<kfp password>
 export KFP_NAMESPACE=<kfp namespace>
@@ -45,15 +44,41 @@ import dataclasses
 import json
 import os
 import os.path
+import random
 import shutil
 import subprocess
 import tempfile
+import time
 from contextlib import contextmanager
 from getpass import getuser
-from typing import Optional, Iterator, Any
+from typing import Optional, Iterator, Any, TypeVar, Callable
 
 import kfp
-import requests
+
+T = TypeVar("T")
+
+
+def retry(f: Callable[..., T]) -> Callable[..., T]:
+    retries: int = 5
+    backoff: int = 3
+
+    def wrapper(*args, **kwargs):
+        curr_retries = 0
+        while True:
+            try:
+                return f(*args, **kwargs)
+            except:  # noqa: B001 E722
+                if curr_retries == retries:
+                    raise
+                else:
+                    sleep = backoff * 2 ** curr_retries
+                    fn_name = f.__qualname__
+                    print(f"retrying `{fn_name}` request after {sleep} seconds")
+                    time.sleep(sleep)
+                    curr_retries += 1
+                    continue
+
+    return wrapper
 
 
 @dataclasses.dataclass
@@ -74,30 +99,43 @@ def getenv_asserts(env: str) -> str:
     return v
 
 
+@retry
 def get_client(host: str) -> kfp.Client:
-    USERNAME = getenv_asserts("KFP_USERNAME")
-    PASSWORD = getenv_asserts("KFP_PASSWORD")
-
-    session = requests.Session()
-    response = session.get(host)
-
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
-
-    data = {"login": USERNAME, "password": PASSWORD}
-    session.post(response.url, headers=headers, data=data)
-    session_cookie = session.cookies.get_dict()["authservice_session"]
-
-    return kfp.Client(
-        host=f"{host}/pipeline",
-        cookies=f"authservice_session={session_cookie}",
-    )
+    return kfp.Client(host=f"{host}/pipeline")
 
 
 def run(*args: str) -> None:
     print(f"run {args}")
     subprocess.run(args, check=True)
+
+
+def run_in_bg(*args: str) -> subprocess.Popen:
+    print(f"run {args}")
+    return subprocess.Popen(args)
+
+
+def get_free_port() -> int:
+    return random.randint(8000, 40000)
+
+
+def enable_port_forward() -> subprocess.Popen:
+    # Enable port forward via running background process.
+    # Kubernetes python does not support a clean way of
+    # Kubernetes python cli provides a socket, more info:
+    # https://github.com/kubernetes-client/python/blob/master/examples/pod_portforward.py
+    # The drawback of this method is that we have to monkey patch
+    # the urllib, which is used by the kfp client.
+    # This approach is more cleaner than to use the python cli directly.
+    namespace = getenv_asserts("KFP_NAMESPACE")
+    local_port = get_free_port()
+    return run_in_bg(
+        "kubectl",
+        "port-forward",
+        "-n",
+        namespace,
+        "svc/ml-pipeline-ui",
+        f"{local_port}:80",
+    )
 
 
 def rand_id() -> str:
@@ -221,11 +259,13 @@ def run_pipeline(build: BuildInfo, pipeline_file: str) -> object:
     HOST: str = getenv_asserts("KFP_HOST")
 
     client = get_client(HOST)
+    namespace = getenv_asserts("KFP_NAMESPACE")
     resp = client.create_run_from_pipeline_package(
         pipeline_file,
         arguments={},
         experiment_name="integration-tests",
         run_name=f"integration test {build.id} - {os.path.basename(pipeline_file)}",
+        namespace=namespace,
     )
     ui_url = f"{HOST}/_/pipeline/#/runs/details/{resp.run_id}"
     print(f"{resp.run_id} - launched! view run at {ui_url}")
@@ -288,4 +328,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    port = get_free_port()
+    kfp_host = f"http://localhost:{port}"
+    os.environ["KFP_HOST"] = kfp_host
+    port_forward_proc = enable_port_forward()
+    try:
+        asyncio.run(main())
+    finally:
+        port_forward_proc.kill()
